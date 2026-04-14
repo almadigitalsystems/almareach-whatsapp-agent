@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.set('trust proxy', 1); // Trust Railway's reverse proxy
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -101,7 +102,8 @@ function validateTwilioSignature(req) {
   if (!authToken) return true; // skip in dev if not set
   const signature = req.headers['x-twilio-signature'];
   if (!signature) return false;
-  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const url = `${protocol}://${req.get('host')}${req.originalUrl}`;
   return twilio.validateRequest(authToken, signature, url, req.body);
 }
 
