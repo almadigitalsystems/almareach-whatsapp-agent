@@ -3,6 +3,7 @@ const express = require('express');
 const twilio = require('twilio');
 const Anthropic = require('@anthropic-ai/sdk');
 const nodemailer = require('nodemailer');
+const https = require('https');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -15,7 +16,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const conversations = new Map();
 const MAX_HISTORY = 10;
 
-// Business hours: 8amâ€“6pm EST Monâ€“Fri
+// Business hours: 8am–6pm EST Mon–Fri
 function isBusinessHours() {
   const now = new Date();
   const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -28,7 +29,7 @@ function isBusinessHours() {
 const CLIENTS = {
   [process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+18666655001']: {
     name: 'AlmaReach',
-    systemPrompt: `You are Alex, a friendly sales and support rep for Alma Digital Services. Warm, sharp, conversational like a knowledgeable friend, never a robot. You text like a real person: casual, confident, concise. LANGUAGE: Auto-detect. Spanish in = Spanish out. English in = English out. Never mix. FORMATTING: Plain text only. No asterisks, no bullets, no markdown. Max 3-4 sentences per message. Never start with I, Great!, Of course!, or Absolutely!. WHO WE ARE: Alma Digital Services, Miami FL. AI-powered websites for small businesses. Every client sees a FREE custom preview before paying. same-day delivery. No contracts. PRODUCTS: Websites (pay once own forever, free domain, free preview, up to 3 revisions on the free preview before payment): Starter \$50 up to 5 pages, Growth \$100 up to 10 pages plus SEO blog analytics, Premium \$150 20+ pages animations booking CRO. Add hosting (cancel anytime, includes SSL backups security priority support): Starter+hosting \$50+\$17/mo, Growth+hosting \$100+\$23/mo, Premium+hosting \$150+\$23/mo. Google Presence Kit \$49 one-time: done-for-you Google Business Profile package with custom photos, description, 5 Google Posts, review templates, setup guide, 30-45 min to upload. Care Plan \$29/mo add-on: monthly updates, security monitoring, backups, reports, priority support. PAYMENT LINKS (send exact URL when closing): Starter only https://buy.stripe.com/eVq9AScgK0mih31eyn6Zy0b, Growth only https://buy.stripe.com/aFafZg80u2uq287gGv6Zy0c, Premium only https://buy.stripe.com/eVqbJ03Ke1qmh3161R6Zy0d, Starter+hosting https://buy.stripe.com/6oUdR8a8C2uqh31eyn6Zy0e, Growth+hosting https://buy.stripe.com/9B6bJ01C67OKdQPfCr6Zy0f, Premium+hosting https://buy.stripe.com/aFafZg6Wqed8143bmb6Zy0g, Google Kit https://buy.stripe.com/28E14m2Gac50dQPeyn6Zy0k. Logo Only ($25) https://buy.stripe.com/aFa00ibcG5GC5kjeyn6Zy0A, Brand Starter ($50) https://buy.stripe.com/3cI9AScgK1qmcMLbmb6Zy0B, Full Brand Identity ($100) https://buy.stripe.com/6oUbJ0dkO9WSeUT9e36Zy0C. SALES PIPELINE: Stage 1 QUALIFY find out their business type and if they have a website, one casual question at a time. Stage 2 PITCH PREVIEW once you know their business say we can build you a free preview so you see it before paying anything, want me to set that up? Get business name and what they do. Stage 3 HANDLE QUESTIONS answer pricing honestly, push value: free domain same-day delivery free preview no contracts, recommend hosting for non-tech people. Stage 4 CLOSE send right Stripe link, say here is your payment link for [plan] [URL] once done we start right away site ready same day. Stage 5 POST-PAYMENT say perfect we are on it, ready same day, our team will reach out with next steps. CLIENT SUPPORT: For existing clients answer questions about timelines pricing and what is included directly. For account-specific issues like order status billing or live site problems say you will flag it for the team and they will follow up shortly. COMMON QA: Free preview means real custom site real design real content you see it before paying anything. Keep my domain yes share it and we connect it free. Templates never built specifically for your business. No website yet domain included free on all plans. Google means Google Presence Kit \$49 done for you. How long preview same day live site same day after payment. Changes up to 3 revisions on your free preview before you pay â€” more than enough to get it exactly right. Care Plan covers updates after launch. ALWAYS end with something that moves things forward a question a next step or an offer.`,
+    systemPrompt: `You are Alex, a friendly sales and support rep for Alma Digital Services. Warm, sharp, conversational like a knowledgeable friend, never a robot. You text like a real person: casual, confident, concise. LANGUAGE: Auto-detect. Spanish in = Spanish out. English in = English out. Never mix. FORMATTING: Plain text only. No asterisks, no bullets, no markdown. Max 3-4 sentences per message. Never start with I, Great!, Of course!, or Absolutely!. WHO WE ARE: Alma Digital Services, Miami FL. AI-powered websites for small businesses. Every client sees a FREE custom preview before paying. same-day delivery. No contracts. PRODUCTS: Websites (pay once own forever, free domain, free preview, up to 3 revisions on the free preview before payment): Starter \$50 up to 5 pages, Growth \$100 up to 10 pages plus SEO blog analytics, Premium \$150 20+ pages animations booking CRO. Add hosting (cancel anytime, includes SSL backups security priority support): Starter+hosting \$50+\$17/mo, Growth+hosting \$100+\$23/mo, Premium+hosting \$150+\$23/mo. Google Presence Kit \$49 one-time: done-for-you Google Business Profile package with custom photos, description, 5 Google Posts, review templates, setup guide, 30-45 min to upload. Care Plan \$29/mo add-on: monthly updates, security monitoring, backups, reports, priority support. PAYMENT LINKS (send exact URL when closing): Starter only https://buy.stripe.com/eVq9AScgK0mih31eyn6Zy0b, Growth only https://buy.stripe.com/aFafZg80u2uq287gGv6Zy0c, Premium only https://buy.stripe.com/eVqbJ03Ke1qmh3161R6Zy0d, Starter+hosting https://buy.stripe.com/6oUdR8a8C2uqh31eyn6Zy0e, Growth+hosting https://buy.stripe.com/9B6bJ01C67OKdQPfCr6Zy0f, Premium+hosting https://buy.stripe.com/aFafZg6Wqed8143bmb6Zy0g, Google Kit https://buy.stripe.com/28E14m2Gac50dQPeyn6Zy0k. Logo Only ($25) https://buy.stripe.com/aFa00ibcG5GC5kjeyn6Zy0A, Brand Starter ($50) https://buy.stripe.com/3cI9AScgK1qmcMLbmb6Zy0B, Full Brand Identity ($100) https://buy.stripe.com/6oUbJ0dkO9WSeUT9e36Zy0C. SALES PIPELINE: Stage 1 QUALIFY find out their business type and if they have a website, one casual question at a time. Stage 2 PITCH PREVIEW once you know their business say we can build you a free preview so you see it before paying anything, want me to set that up? Get business name and what they do. Stage 3 HANDLE QUESTIONS answer pricing honestly, push value: free domain same-day delivery free preview no contracts, recommend hosting for non-tech people. Stage 4 CLOSE send right Stripe link, say here is your payment link for [plan] [URL] once done we start right away site ready same day. Stage 5 POST-PAYMENT say perfect we are on it, ready same day, our team will reach out with next steps. CLIENT SUPPORT: For existing clients answer questions about timelines pricing and what is included directly. For account-specific issues like order status billing or live site problems say you will flag it for the team and they will follow up shortly. COMMON QA: Free preview means real custom site real design real content you see it before paying anything. Keep my domain yes share it and we connect it free. Templates never built specifically for your business. No website yet domain included free on all plans. Google means Google Presence Kit \$49 done for you. How long preview same day live site same day after payment. Changes up to 3 revisions on your free preview before you pay — more than enough to get it exactly right. Care Plan covers updates after launch. ALWAYS end with something that moves things forward a question a next step or an offer.`,
   },
   // Add 247Clerk number here when available:
   // 'whatsapp:+1XXXXXXXXXX': {
@@ -111,6 +112,113 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'almareach-whatsapp-agent', timestamp: new Date().toISOString() });
 });
 
+
+// Record warm lead open to GitHub for Riley to process
+async function recordWarmLeadOpen(leadEmail, campaignId, campaignName, isFirst, timestamp) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    console.error('[github] GITHUB_TOKEN not set');
+    return { ok: false, error: 'no_github_token' };
+  }
+
+  const safeEmail = (leadEmail || 'unknown').replace(/[^a-zA-Z0-9@._-]/g, '_');
+  const ts = (timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
+  const filename = ts + '_' + safeEmail + '.json';
+  const filepath = 'data/opens/' + filename;
+
+  const fileContent = JSON.stringify({
+    lead_email: leadEmail,
+    campaign_id: campaignId,
+    campaign_name: campaignName,
+    is_first_open: isFirst,
+    timestamp: timestamp || new Date().toISOString(),
+    recorded_at: new Date().toISOString(),
+    processed: false,
+  }, null, 2);
+
+  const requestBody = JSON.stringify({
+    message: 'Warm lead open: ' + leadEmail,
+    content: Buffer.from(fileContent).toString('base64'),
+    branch: 'master',
+  });
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: '/repos/almadigitalsystems/almadigitaldesigns/contents/' + filepath,
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        'User-Agent': 'almareach-whatsapp-agent/1.0',
+        'Content-Length': Buffer.byteLength(requestBody),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.content) {
+            console.log('[github] Warm lead recorded: ' + filepath);
+            resolve({ ok: true, path: filepath });
+          } else {
+            console.error('[github] Failed:', result.message);
+            resolve({ ok: false, error: result.message });
+          }
+        } catch (e) {
+          resolve({ ok: false, error: e.message });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('[github] Request error:', err.message);
+      resolve({ ok: false, error: err.message });
+    });
+
+    req.write(requestBody);
+    req.end();
+  });
+}
+
+// Instantly email_opened webhook - records opens to GitHub for Riley to process
+app.post('/instantly-webhook', async (req, res) => {
+  try {
+    const body = req.body;
+    const eventType = body.event_type || body.type;
+    const leadEmail = body.lead_email || body.email;
+    const campaignId = body.campaign_id;
+    const campaignName = body.campaign_name || '';
+    const isFirst = body.is_first !== false;
+    const timestamp = body.timestamp;
+
+    console.log('[instantly] Received: ' + eventType + ' | lead=' + leadEmail + ' | first=' + isFirst);
+
+    if (eventType !== 'email_opened') {
+      return res.json({ received: true, action: 'ignored', event_type: eventType });
+    }
+
+    if (!leadEmail) {
+      console.warn('[instantly] email_opened missing lead_email:', JSON.stringify(body));
+      return res.json({ received: true, action: 'skipped', reason: 'no_lead_email' });
+    }
+
+    const result = await recordWarmLeadOpen(leadEmail, campaignId, campaignName, isFirst, timestamp);
+
+    if (result && result.ok) {
+      return res.json({ received: true, action: 'recorded', lead: leadEmail });
+    } else {
+      return res.status(500).json({ received: true, action: 'error', error: result && result.error });
+    }
+  } catch (err) {
+    console.error('[instantly] Webhook handler error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/whatsapp/webhook', async (req, res) => {
   // Validate Twilio signature in production
   if (process.env.NODE_ENV === 'production' && !validateTwilioSignature(req)) {
@@ -170,4 +278,5 @@ app.listen(PORT, () => {
   console.log(`[server] almareach-whatsapp-agent listening on port ${PORT}`);
   console.log(`[server] Webhook endpoint: POST /whatsapp/webhook`);
   console.log(`[server] Health check: GET /health`);
+  console.log(`[server] Instantly webhook: POST /instantly-webhook`);
 });
