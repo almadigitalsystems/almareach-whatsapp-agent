@@ -3,7 +3,6 @@ const express = require('express');
 const twilio = require('twilio');
 const Anthropic = require('@anthropic-ai/sdk');
 const nodemailer = require('nodemailer');
-const https = require('https');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -112,113 +111,6 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'almareach-whatsapp-agent', timestamp: new Date().toISOString() });
 });
 
-
-// Record warm lead open to GitHub for Riley to process
-async function recordWarmLeadOpen(leadEmail, campaignId, campaignName, isFirst, timestamp) {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    console.error('[github] GITHUB_TOKEN not set');
-    return { ok: false, error: 'no_github_token' };
-  }
-
-  const safeEmail = (leadEmail || 'unknown').replace(/[^a-zA-Z0-9@._-]/g, '_');
-  const ts = (timestamp || new Date().toISOString()).replace(/[:.]/g, '-');
-  const filename = ts + '_' + safeEmail + '.json';
-  const filepath = 'data/opens/' + filename;
-
-  const fileContent = JSON.stringify({
-    lead_email: leadEmail,
-    campaign_id: campaignId,
-    campaign_name: campaignName,
-    is_first_open: isFirst,
-    timestamp: timestamp || new Date().toISOString(),
-    recorded_at: new Date().toISOString(),
-    processed: false,
-  }, null, 2);
-
-  const requestBody = JSON.stringify({
-    message: 'Warm lead open: ' + leadEmail,
-    content: Buffer.from(fileContent).toString('base64'),
-    branch: 'master',
-  });
-
-  return new Promise((resolve) => {
-    const options = {
-      hostname: 'api.github.com',
-      path: '/repos/almadigitalsystems/almadigitaldesigns/contents/' + filepath,
-      method: 'PUT',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json',
-        'User-Agent': 'almareach-whatsapp-agent/1.0',
-        'Content-Length': Buffer.byteLength(requestBody),
-      },
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
-          if (result.content) {
-            console.log('[github] Warm lead recorded: ' + filepath);
-            resolve({ ok: true, path: filepath });
-          } else {
-            console.error('[github] Failed:', result.message);
-            resolve({ ok: false, error: result.message });
-          }
-        } catch (e) {
-          resolve({ ok: false, error: e.message });
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      console.error('[github] Request error:', err.message);
-      resolve({ ok: false, error: err.message });
-    });
-
-    req.write(requestBody);
-    req.end();
-  });
-}
-
-// Instantly email_opened webhook - records opens to GitHub for Riley to process
-app.post('/instantly-webhook', async (req, res) => {
-  try {
-    const body = req.body;
-    const eventType = body.event_type || body.type;
-    const leadEmail = body.lead_email || body.email;
-    const campaignId = body.campaign_id;
-    const campaignName = body.campaign_name || '';
-    const isFirst = body.is_first !== false;
-    const timestamp = body.timestamp;
-
-    console.log('[instantly] Received: ' + eventType + ' | lead=' + leadEmail + ' | first=' + isFirst);
-
-    if (eventType !== 'email_opened') {
-      return res.json({ received: true, action: 'ignored', event_type: eventType });
-    }
-
-    if (!leadEmail) {
-      console.warn('[instantly] email_opened missing lead_email:', JSON.stringify(body));
-      return res.json({ received: true, action: 'skipped', reason: 'no_lead_email' });
-    }
-
-    const result = await recordWarmLeadOpen(leadEmail, campaignId, campaignName, isFirst, timestamp);
-
-    if (result && result.ok) {
-      return res.json({ received: true, action: 'recorded', lead: leadEmail });
-    } else {
-      return res.status(500).json({ received: true, action: 'error', error: result && result.error });
-    }
-  } catch (err) {
-    console.error('[instantly] Webhook handler error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 app.post('/whatsapp/webhook', async (req, res) => {
   // Validate Twilio signature in production
   if (process.env.NODE_ENV === 'production' && !validateTwilioSignature(req)) {
@@ -278,5 +170,4 @@ app.listen(PORT, () => {
   console.log(`[server] almareach-whatsapp-agent listening on port ${PORT}`);
   console.log(`[server] Webhook endpoint: POST /whatsapp/webhook`);
   console.log(`[server] Health check: GET /health`);
-  console.log(`[server] Instantly webhook: POST /instantly-webhook`);
 });
